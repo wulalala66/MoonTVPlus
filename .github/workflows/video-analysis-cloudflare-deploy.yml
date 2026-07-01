@@ -80,4 +80,5 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy --config video-analysis-worker/wrangler.toml
+          packageManager: npm
           wranglerVersion: '4.60.0'
