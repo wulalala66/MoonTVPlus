@@ -1,0 +1,83 @@
+name: Deploy Video Analysis Adapter to Cloudflare
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'video-analysis-worker/**'
+      - '.github/workflows/video-analysis-cloudflare-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy Video Analysis Adapter
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Configure Worker variables
+        shell: bash
+        env:
+          VIDEO_ANALYSIS_WORKER_NAME: ${{ secrets.VIDEO_ANALYSIS_WORKER_NAME }}
+          VIDEO_ANALYSIS_PUBLIC_BASE_URL: ${{ secrets.VIDEO_ANALYSIS_PUBLIC_BASE_URL }}
+          VIDEO_ANALYSIS_PARSER_API: ${{ secrets.VIDEO_ANALYSIS_PARSER_API }}
+          VIDEO_ANALYSIS_JLVUNGO_API_KEY: ${{ secrets.VIDEO_ANALYSIS_JLVUNGO_API_KEY }}
+          VIDEO_ANALYSIS_PARSER_KEY: ${{ secrets.VIDEO_ANALYSIS_PARSER_KEY }}
+          VIDEO_ANALYSIS_PARSER_CANDIDATES: ${{ secrets.VIDEO_ANALYSIS_PARSER_CANDIDATES }}
+          VIDEO_ANALYSIS_PLAY_MODE: ${{ secrets.VIDEO_ANALYSIS_PLAY_MODE }}
+          VIDEO_ANALYSIS_CACHE_TTL_MINUTES: ${{ secrets.VIDEO_ANALYSIS_CACHE_TTL_MINUTES }}
+          VIDEO_ANALYSIS_BILI_COOKIE: ${{ secrets.VIDEO_ANALYSIS_BILI_COOKIE }}
+          VIDEO_ANALYSIS_ENABLED_PLATFORMS: ${{ secrets.VIDEO_ANALYSIS_ENABLED_PLATFORMS }}
+          VIDEO_ANALYSIS_INCLUDE_AGGREGATE_SOURCE: ${{ secrets.VIDEO_ANALYSIS_INCLUDE_AGGREGATE_SOURCE }}
+        run: |
+          set -euo pipefail
+
+          escape_toml() {
+            printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+          }
+
+          replace_name() {
+            local value="$1"
+            if [ -n "$value" ]; then
+              sed -i "s/^name = .*/name = \"$(escape_toml "$value")\"/" video-analysis-worker/wrangler.toml
+            fi
+          }
+
+          append_var() {
+            local name="$1"
+            local value="$2"
+            if [ -n "$value" ]; then
+              printf '%s = "%s"\n' "$name" "$(escape_toml "$value")" >> video-analysis-worker/wrangler.toml
+            fi
+          }
+
+          replace_name "$VIDEO_ANALYSIS_WORKER_NAME"
+          append_var "PUBLIC_BASE_URL" "$VIDEO_ANALYSIS_PUBLIC_BASE_URL"
+          append_var "PARSER_API" "$VIDEO_ANALYSIS_PARSER_API"
+          append_var "JLVUNGO_API_KEY" "$VIDEO_ANALYSIS_JLVUNGO_API_KEY"
+          append_var "PARSER_KEY" "$VIDEO_ANALYSIS_PARSER_KEY"
+          append_var "PARSER_CANDIDATES" "$VIDEO_ANALYSIS_PARSER_CANDIDATES"
+          append_var "PLAY_MODE" "$VIDEO_ANALYSIS_PLAY_MODE"
+          append_var "CACHE_TTL_MINUTES" "$VIDEO_ANALYSIS_CACHE_TTL_MINUTES"
+          append_var "BILI_COOKIE" "$VIDEO_ANALYSIS_BILI_COOKIE"
+          append_var "ENABLED_PLATFORMS" "$VIDEO_ANALYSIS_ENABLED_PLATFORMS"
+          append_var "INCLUDE_AGGREGATE_SOURCE" "$VIDEO_ANALYSIS_INCLUDE_AGGREGATE_SOURCE"
+
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config video-analysis-worker/wrangler.toml
+          wranglerVersion: '4.60.0'
